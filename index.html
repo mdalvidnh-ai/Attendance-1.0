@@ -1412,123 +1412,135 @@
         }
 
         async function exportPDF() {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+            try {
+                // Check if jsPDF is loaded
+                if (typeof window.jspdf === 'undefined') {
+                    alert('PDF library is loading... Please try again in a moment.');
+                    return;
+                }
 
-            const currentMonth = document.getElementById('attendance-month').value;
-            const [year, month] = currentMonth.split('-').map(Number);
-            const daysInMonth = new Date(year, month, 0).getDate();
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
 
-            const students = await db.students.toArray();
-            const sortedStudents = getSortedStudents(students);
-            const tableData = [];
-            const prevMonthPresent = parseInt(document.getElementById('prev-month-present').value) || 0;
+                const currentMonth = document.getElementById('attendance-month').value;
+                const [year, month] = currentMonth.split('-').map(Number);
+                const daysInMonth = new Date(year, month, 0).getDate();
 
-            for (let student of sortedStudents) {
-                let row = [];
+                const students = await db.students.toArray();
+                const sortedStudents = getSortedStudents(students);
+                const tableData = [];
+                const prevMonthPresent = parseInt(document.getElementById('prev-month-present').value) || 0;
+
+                for (let student of sortedStudents) {
+                    let row = [];
+                    
+                    // First three columns - exactly as in table
+                    row.push(student.rollNo);
+                    row.push(student.name);
+                    row.push(student.gender);
+
+                    let totalPresent = 0;
+                    let totalAbsent = 0;
+
+                    // Then all the day columns
+                    for (let day = 1; day <= daysInMonth; day++) {
+                        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const attendance = await db.attendance
+                            .where({ date: dateStr, rollNo: student.rollNo })
+                            .first();
+
+                        const status = attendance?.status === 'present' ? 'P' : attendance?.status === 'absent' ? 'A' : '';
+                        row.push(status);
+                        
+                        if (status === 'P') totalPresent++;
+                        if (status === 'A') totalAbsent++;
+                    }
+
+                    // Last four columns - exactly as in table
+                    row.push(totalPresent);
+                    row.push(totalAbsent);
+                    row.push(prevMonthPresent);
+                    row.push(totalPresent + prevMonthPresent);
+
+                    tableData.push(row);
+                }
+
+                // Build header - exactly as in table
+                let headers = [['Roll No', 'Student Name', 'Gender']];
                 
-                // First three columns - exactly as in table
-                row.push(student.rollNo);
-                row.push(student.name);
-                row.push(student.gender);
-
-                let totalPresent = 0;
-                let totalAbsent = 0;
-
-                // Then all the day columns
+                // Add day headers
                 for (let day = 1; day <= daysInMonth; day++) {
-                    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                    const attendance = await db.attendance
-                        .where({ date: dateStr, rollNo: student.rollNo })
-                        .first();
-
-                    const status = attendance?.status === 'present' ? 'P' : attendance?.status === 'absent' ? 'A' : '';
-                    row.push(status);
-                    
-                    if (status === 'P') totalPresent++;
-                    if (status === 'A') totalAbsent++;
+                    headers[0].push(day.toString());
                 }
+                
+                // Add summary headers
+                headers[0].push('Total Present');
+                headers[0].push('Total Absent');
+                headers[0].push('Previous Month Present');
+                headers[0].push('Combine Present');
 
-                // Last four columns - exactly as in table
-                row.push(totalPresent);
-                row.push(totalAbsent);
-                row.push(prevMonthPresent);
-                row.push(totalPresent + prevMonthPresent);
+                // Add title
+                doc.setFontSize(16);
+                doc.setFont('helvetica', 'bold');
+                doc.text(`Attendance Report - ${currentMonth}`, 14, 15);
 
-                tableData.push(row);
+                // Create table
+                doc.autoTable({
+                    head: headers,
+                    body: tableData,
+                    startY: 25,
+                    theme: 'grid',
+                    styles: { 
+                        fontSize: 7, 
+                        cellPadding: 1,
+                        halign: 'center',
+                        valign: 'middle'
+                    },
+                    headStyles: { 
+                        fillColor: [59, 130, 246],
+                        fontStyle: 'bold',
+                        fontSize: 7,
+                        halign: 'center'
+                    },
+                    columnStyles: {
+                        0: { cellWidth: 12, halign: 'center' },  // Roll No
+                        1: { cellWidth: 35, halign: 'left' },    // Student Name
+                        2: { cellWidth: 15, halign: 'center' }   // Gender
+                    },
+                    didParseCell: function(data) {
+                        // Style the summary columns at the end
+                        const colIndex = data.column.index;
+                        const totalCols = 3 + daysInMonth + 4; // 3 info cols + days + 4 summary cols
+                        
+                        // Highlight Total Present column (green)
+                        if (colIndex === totalCols - 4 && data.row.section === 'body') {
+                            data.cell.styles.fillColor = [220, 252, 231]; // Light green
+                            data.cell.styles.textColor = [22, 163, 74]; // Dark green
+                            data.cell.styles.fontStyle = 'bold';
+                        }
+                        
+                        // Highlight Total Absent column (red)
+                        if (colIndex === totalCols - 3 && data.row.section === 'body') {
+                            data.cell.styles.fillColor = [254, 226, 226]; // Light red
+                            data.cell.styles.textColor = [220, 38, 38]; // Dark red
+                            data.cell.styles.fontStyle = 'bold';
+                        }
+                        
+                        // Highlight Combine Present column (blue)
+                        if (colIndex === totalCols - 1 && data.row.section === 'body') {
+                            data.cell.styles.fillColor = [219, 234, 254]; // Light blue
+                            data.cell.styles.textColor = [59, 130, 246]; // Blue
+                            data.cell.styles.fontStyle = 'bold';
+                        }
+                    }
+                });
+
+                doc.save(`Attendance_${currentMonth}.pdf`);
+                
+            } catch (error) {
+                console.error('PDF Export Error:', error);
+                alert('Error creating PDF: ' + error.message);
             }
-
-            // Build header - exactly as in table
-            let headers = [['Roll No', 'Student Name', 'Gender']];
-            
-            // Add day headers
-            for (let day = 1; day <= daysInMonth; day++) {
-                headers[0].push(day.toString());
-            }
-            
-            // Add summary headers
-            headers[0].push('Total Present');
-            headers[0].push('Total Absent');
-            headers[0].push('Previous Month Present');
-            headers[0].push('Combine Present');
-
-            // Add title
-            doc.setFontSize(16);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`Attendance Report - ${currentMonth}`, 14, 15);
-
-            // Create table
-            doc.autoTable({
-                head: headers,
-                body: tableData,
-                startY: 25,
-                theme: 'grid',
-                styles: { 
-                    fontSize: 7, 
-                    cellPadding: 1,
-                    halign: 'center',
-                    valign: 'middle'
-                },
-                headStyles: { 
-                    fillColor: [59, 130, 246],
-                    fontStyle: 'bold',
-                    fontSize: 7,
-                    halign: 'center'
-                },
-                columnStyles: {
-                    0: { cellWidth: 12, halign: 'center' },  // Roll No
-                    1: { cellWidth: 35, halign: 'left' },    // Student Name
-                    2: { cellWidth: 15, halign: 'center' }   // Gender
-                },
-                didParseCell: function(data) {
-                    // Style the summary columns at the end
-                    const colIndex = data.column.index;
-                    const totalCols = 3 + daysInMonth + 4; // 3 info cols + days + 4 summary cols
-                    
-                    // Highlight Total Present column (green)
-                    if (colIndex === totalCols - 4 && data.row.section === 'body') {
-                        data.cell.styles.fillColor = [220, 252, 231]; // Light green
-                        data.cell.styles.textColor = [22, 163, 74]; // Dark green
-                        data.cell.styles.fontStyle = 'bold';
-                    }
-                    
-                    // Highlight Total Absent column (red)
-                    if (colIndex === totalCols - 3 && data.row.section === 'body') {
-                        data.cell.styles.fillColor = [254, 226, 226]; // Light red
-                        data.cell.styles.textColor = [220, 38, 38]; // Dark red
-                        data.cell.styles.fontStyle = 'bold';
-                    }
-                    
-                    // Highlight Combine Present column (blue)
-                    if (colIndex === totalCols - 1 && data.row.section === 'body') {
-                        data.cell.styles.fillColor = [219, 234, 254]; // Light blue
-                        data.cell.styles.textColor = [59, 130, 246]; // Blue
-                        data.cell.styles.fontStyle = 'bold';
-                    }
-                }
-            });
-
-            doc.save(`Attendance_${currentMonth}.pdf`);
         }
 
         async function clearAllData() {
