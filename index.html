@@ -23,7 +23,7 @@
     
     <!-- jsPDF and AutoTable for PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.1/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.5.31/dist/jspdf.plugin.autotable.min.js"></script>
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Poppins:wght@300;400;500;600;700;800&display=swap');
@@ -1415,12 +1415,19 @@
             try {
                 // Check if jsPDF is loaded
                 if (typeof window.jspdf === 'undefined') {
-                    alert('PDF library is loading... Please try again in a moment.');
+                    alert('PDF library is loading... Please wait and try again.');
                     return;
                 }
 
                 const { jsPDF } = window.jspdf;
-                const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+                const doc = new jsPDF('l', 'mm', 'a4');
+
+                // Check if autoTable is available
+                if (typeof doc.autoTable === 'undefined') {
+                    alert('PDF table plugin is still loading. Please wait a moment and try again.');
+                    console.error('autoTable plugin not loaded');
+                    return;
+                }
 
                 const currentMonth = document.getElementById('attendance-month').value;
                 const [year, month] = currentMonth.split('-').map(Number);
@@ -1484,7 +1491,7 @@
                 doc.setFont('helvetica', 'bold');
                 doc.text(`Attendance Report - ${currentMonth}`, 14, 15);
 
-                // Create table
+                // Create table with autoTable
                 doc.autoTable({
                     head: headers,
                     body: tableData,
@@ -1503,33 +1510,29 @@
                         halign: 'center'
                     },
                     columnStyles: {
-                        0: { cellWidth: 12, halign: 'center' },  // Roll No
-                        1: { cellWidth: 35, halign: 'left' },    // Student Name
-                        2: { cellWidth: 15, halign: 'center' }   // Gender
+                        0: { cellWidth: 12, halign: 'center' },
+                        1: { cellWidth: 35, halign: 'left' },
+                        2: { cellWidth: 15, halign: 'center' }
                     },
                     didParseCell: function(data) {
-                        // Style the summary columns at the end
                         const colIndex = data.column.index;
-                        const totalCols = 3 + daysInMonth + 4; // 3 info cols + days + 4 summary cols
+                        const totalCols = 3 + daysInMonth + 4;
                         
-                        // Highlight Total Present column (green)
                         if (colIndex === totalCols - 4 && data.row.section === 'body') {
-                            data.cell.styles.fillColor = [220, 252, 231]; // Light green
-                            data.cell.styles.textColor = [22, 163, 74]; // Dark green
+                            data.cell.styles.fillColor = [220, 252, 231];
+                            data.cell.styles.textColor = [22, 163, 74];
                             data.cell.styles.fontStyle = 'bold';
                         }
                         
-                        // Highlight Total Absent column (red)
                         if (colIndex === totalCols - 3 && data.row.section === 'body') {
-                            data.cell.styles.fillColor = [254, 226, 226]; // Light red
-                            data.cell.styles.textColor = [220, 38, 38]; // Dark red
+                            data.cell.styles.fillColor = [254, 226, 226];
+                            data.cell.styles.textColor = [220, 38, 38];
                             data.cell.styles.fontStyle = 'bold';
                         }
                         
-                        // Highlight Combine Present column (blue)
                         if (colIndex === totalCols - 1 && data.row.section === 'body') {
-                            data.cell.styles.fillColor = [219, 234, 254]; // Light blue
-                            data.cell.styles.textColor = [59, 130, 246]; // Blue
+                            data.cell.styles.fillColor = [219, 234, 254];
+                            data.cell.styles.textColor = [59, 130, 246];
                             data.cell.styles.fontStyle = 'bold';
                         }
                     }
@@ -1539,7 +1542,7 @@
                 
             } catch (error) {
                 console.error('PDF Export Error:', error);
-                alert('Error creating PDF: ' + error.message);
+                alert('Error creating PDF: ' + error.message + '\n\nPlease refresh the page and try again.');
             }
         }
 
